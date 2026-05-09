@@ -1,4 +1,5 @@
 name: Check Stocks
+# VI valuation watcher — alerts Telegram when ratio>=10.
 
 on:
   schedule:
