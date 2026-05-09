@@ -53,7 +53,6 @@ _REQUIRED_COLUMN_KEYWORDS = {
     "cagr_3y_premium": [
         ("3y", "cagr", "premium"),
         ("cagr", "3y", "premium"),
-        ("3y cagr",),
     ],
     "fair_price_core": [
         ("fair", "price", "core"),

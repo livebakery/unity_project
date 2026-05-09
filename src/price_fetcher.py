@@ -34,12 +34,11 @@ def fetch_prices(tickers: list[str], suffix: str = ".BK") -> dict[str, Optional[
         df = None
 
     if df is not None and not df.empty:
+        # group_by="ticker" yields a MultiIndex (ticker, field) for any count.
         for bare, sym in zip(tickers, yahoo_symbols):
             try:
-                if len(yahoo_symbols) == 1:
-                    closes = df["Close"].dropna()
-                else:
-                    closes = df[sym]["Close"].dropna()
+                closes = df[sym]["Close"].dropna() if (sym, "Close") in df.columns \
+                    else df["Close"].dropna()
                 if len(closes) > 0:
                     out[bare] = float(closes.iloc[-1])
             except (KeyError, AttributeError):
