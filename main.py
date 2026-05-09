@@ -14,6 +14,7 @@ import os
 import sys
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
@@ -83,6 +84,37 @@ def format_alert_message(snap: alert_logic.Snapshot, threshold: float) -> str:
     )
 
 
+def format_heartbeat(
+    snapshots: list[alert_logic.Snapshot],
+    missing_prices: list[str],
+    threshold: float,
+    last_modified: Optional[str],
+    now_ict: datetime,
+) -> str:
+    lines = [f"📍 *EOD {now_ict.strftime('%d %b %Y')}* — ระบบทำงานปกติ", ""]
+    if snapshots:
+        for snap in snapshots:
+            tag = " 🚨" if snap.ratio >= threshold else ""
+            lines.append(
+                f"`{snap.ticker}` @ {snap.live_price:,.2f} — "
+                f"ratio={snap.ratio:.2f}{tag}"
+            )
+            lines.append(
+                f"  UD3Y {snap.updown_3y_pct:+.1f}% / "
+                f"UDcore {snap.updown_core_pct:+.1f}% / "
+                f"fair3Y {snap.fair_3y_premium:,.2f}"
+            )
+    else:
+        lines.append("_ไม่มี snapshot (ดูราคาไม่ได้?)_")
+    if missing_prices:
+        lines.append("")
+        lines.append(f"⚠️ ราคาไม่มี: {', '.join(missing_prices)}")
+    if last_modified:
+        lines.append("")
+        lines.append(f"sheet last update: `{last_modified}`")
+    return "\n".join(lines)
+
+
 def run() -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -98,7 +130,8 @@ def run() -> int:
         return 2
 
     now_ict = datetime.now(tz=ICT)
-    skip_market_check = os.environ.get("FORCE_RUN") == "1"
+    heartbeat_only = os.environ.get("HEARTBEAT_ONLY") == "1"
+    skip_market_check = os.environ.get("FORCE_RUN") == "1" or heartbeat_only
     if not skip_market_check and not is_market_open(now_ict, config["market_hours_ict"]):
         log.info("Market closed (now=%s ICT); exiting.",
                  now_ict.strftime("%Y-%m-%d %H:%M %a"))
@@ -155,8 +188,9 @@ def run() -> int:
     new_vals = {s.ticker: s for s in pr.stocks}
     last_state_vals: dict[str, dict] = st.get("last_valuations", {})
 
-    # 3. Notify on sheet update
-    if sheet_updated:
+    # 3. Notify on sheet update (suppressed in heartbeat mode — we only want
+    #    one message per heartbeat run regardless of mentor activity).
+    if sheet_updated and not heartbeat_only:
         changes, removed = alert_logic.diff_valuations(new_vals, last_state_vals)
         if changes or removed:
             try:
@@ -192,13 +226,26 @@ def run() -> int:
         last_triggered={t: bool(v) for t, v in st.get("last_triggered", {}).items()},
         ratio_threshold=threshold,
     )
-    st["last_triggered"] = updated
 
     for snap in snapshots:
         log.info("%s: live=%.2f fair3Y=%.2f core=%.2f UD3Y=%+.2f%% UDcore=%+.2f%% ratio=%.2f%s",
                  snap.ticker, snap.live_price, snap.fair_3y_premium, snap.fair_price_core,
                  snap.updown_3y_pct, snap.updown_core_pct, snap.ratio,
                  " [TRIGGERED]" if snap.triggered else "")
+
+    # Heartbeat mode: send EOD summary and exit without mutating state.
+    if heartbeat_only:
+        msg = format_heartbeat(snapshots, missing, threshold,
+                               st.get("last_modified_time"), now_ict)
+        try:
+            telegram_notify.send(msg)
+            log.info("Heartbeat sent.")
+        except Exception as e:
+            log.error("Failed to send heartbeat: %s", e)
+            return 1
+        return 0
+
+    st["last_triggered"] = updated
 
     # 6. Send alerts
     for snap in new_alerts:

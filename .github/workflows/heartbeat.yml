@@ -1,28 +1,22 @@
-name: Check Stocks
-# VI valuation watcher — alerts Telegram when ratio>=10.
+name: Daily Heartbeat
+# Sends an end-of-day Telegram summary at 16:50 ICT on weekdays so the user
+# has daily proof-of-life. Skips state mutation; pure read + send.
 
 on:
   schedule:
-    # SET market hours ICT (UTC+7): 09:55-12:30 morning, 14:30-16:45 afternoon.
-    # In UTC that is 02:55-05:30 and 07:30-09:45.
-    # Cron uses a loose superset; main.py gates on actual market hours.
-    - cron: '*/15 2-9 * * 1-5'
+    # 16:50 ICT (UTC+7) Mon-Fri = 09:50 UTC
+    - cron: '50 9 * * 1-5'
   workflow_dispatch:
-    inputs:
-      force_run:
-        description: 'Run even if market is closed'
-        type: boolean
-        default: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: check-stocks
+  group: heartbeat
   cancel-in-progress: false
 
 jobs:
-  check:
+  heartbeat:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -37,26 +31,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run check
+      - name: Run heartbeat
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          FORCE_RUN: ${{ inputs.force_run && '1' || '' }}
+          HEARTBEAT_ONLY: '1'
         run: python main.py
-
-      - name: Commit updated state
-        run: |
-          git config user.name  "stock-bot"
-          git config user.email "stock-bot@users.noreply.github.com"
-          if [ -f state.json ] && ! git diff --quiet -- state.json; then
-            git add state.json
-            git commit -m "chore: update state [skip ci]"
-            git push
-          else
-            echo "No state changes to commit."
-          fi
 
       - name: Notify Telegram on failure
         if: failure()
@@ -69,4 +51,4 @@ jobs:
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
             --data-urlencode "parse_mode=Markdown" \
             --data-urlencode "disable_web_page_preview=true" \
-            --data-urlencode "text=⚠️ *check-stocks ล้มเหลว* — [ดู log](${RUN_URL})"
+            --data-urlencode "text=⚠️ *heartbeat ล้มเหลว* — [ดู log](${RUN_URL})"
