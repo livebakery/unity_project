@@ -1,5 +1,13 @@
 {
-  "last_modified_time": null,
-  "last_triggered": {},
-  "last_valuations": {}
+  "last_modified_time": "2026-05-09T05:30:01.181Z",
+  "last_triggered": {
+    "DOHOME": false
+  },
+  "last_valuations": {
+    "DOHOME": {
+      "cagr_3y_premium": 21.2993,
+      "fair_price_core": 2.98406,
+      "fair_price_premium": 3.73007
+    }
+  }
 }
