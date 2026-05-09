@@ -1,5 +1,5 @@
 {
-  "last_alert_levels": {},
-  "last_fair_values": {},
-  "last_modified_time": null
+  "last_modified_time": null,
+  "last_triggered": {},
+  "last_valuations": {}
 }

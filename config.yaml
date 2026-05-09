@@ -1,10 +1,14 @@
-thresholds:
-  # discount_pct = (fair - current) / fair * 100
-  # alert fires when discount_pct >= value (price <= fair * (1 - pct/100))
-  level_1_pct: 0    # price touches fair value
-  level_2_pct: 10   # price 10% below fair
-  level_3_pct: 15   # price 15% below fair (deep value)
+# --- Stocks to monitor (start with one, add tickers freely) ---
+watchlist:
+  - DOHOME
 
+# --- Buy-signal threshold ---
+# ratio = | Up/Down 3Y [Premium] | / | Up/Down [Core] |
+# Computed live with current market price (yfinance) and the sheet's
+# Fair Price [Premium], 3Y CAGR [Premium], Fair Price [Core].
+ratio_threshold: 10.0
+
+# --- Market hours (ICT, UTC+7). Outside these times main.py exits early. ---
 market_hours_ict:
   morning:
     start: "09:55"
@@ -13,22 +17,6 @@ market_hours_ict:
     start: "14:30"
     end: "16:45"
 
-header_keywords:
-  ticker:
-    - ticker
-    - symbol
-    - หุ้น
-    - ชื่อย่อ
-    - code
-  fair_value:
-    - fair
-    - target
-    - มูลค่า
-    - ประเมิน
-    - intrinsic
-
-# Sheet tab name to read; null = first worksheet
-worksheet_name: null
-
-# Ticker suffix appended for SET market price lookup via yfinance
-ticker_suffix: ".BK"
+# --- Sheet to read ---
+worksheet_name: null      # null = first worksheet
+ticker_suffix: ".BK"      # appended for yfinance lookup (SET stocks)

@@ -15,14 +15,14 @@ def load(path: Path = DEFAULT_PATH) -> dict[str, Any]:
     if not path.exists():
         return {
             "last_modified_time": None,
-            "last_fair_values": {},
-            "last_alert_levels": {},
+            "last_valuations": {},
+            "last_triggered": {},
         }
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
     data.setdefault("last_modified_time", None)
-    data.setdefault("last_fair_values", {})
-    data.setdefault("last_alert_levels", {})
+    data.setdefault("last_valuations", {})
+    data.setdefault("last_triggered", {})
     return data
 
 
