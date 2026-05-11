@@ -4,12 +4,15 @@ name: Daily Heartbeat
 
 on:
   schedule:
-    # 16:50 ICT (UTC+7) Mon-Fri = 09:50 UTC
-    - cron: '50 9 * * 1-5'
+    # GitHub Actions cron is best-effort and drops runs under load. Schedule
+    # three near-identical times Mon-Fri; main.py dedups via last_heartbeat_date.
+    - cron: '50 9 * * 1-5'   # 16:50 ICT primary
+    - cron: '5 10 * * 1-5'   # 17:05 ICT backup
+    - cron: '20 10 * * 1-5'  # 17:20 ICT backup
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write  # commits state.json (last_heartbeat_date) to persist dedup
 
 concurrency:
   group: heartbeat
@@ -39,6 +42,18 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           HEARTBEAT_ONLY: '1'
         run: python main.py
+
+      - name: Commit updated state
+        run: |
+          git config user.name  "stock-bot"
+          git config user.email "stock-bot@users.noreply.github.com"
+          if [ -f state.json ] && ! git diff --quiet -- state.json; then
+            git add state.json
+            git commit -m "chore: heartbeat date [skip ci]"
+            git push
+          else
+            echo "No state changes to commit."
+          fi
 
       - name: Notify Telegram on failure
         if: failure()

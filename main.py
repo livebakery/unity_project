@@ -233,8 +233,19 @@ def run() -> int:
                  snap.updown_3y_pct, snap.updown_core_pct, snap.ratio,
                  " [TRIGGERED]" if snap.triggered else "")
 
-    # Heartbeat mode: send EOD summary and exit without mutating state.
+    # Heartbeat mode: send EOD summary, dedup so multiple cron triggers per day
+    # only fire once. GitHub Actions cron is best-effort and drops runs, so
+    # heartbeat.yml schedules 3 near-identical times — dedup here keeps the
+    # user from seeing 2-3 identical heartbeats on days when all three fire.
     if heartbeat_only:
+        today = now_ict.strftime("%Y-%m-%d")
+        # Re-read state from disk so we don't accidentally save the fresh
+        # last_modified_time from step 1 (that would suppress the next
+        # mentor-edit diff message). Only persist the dedup field.
+        st_save = state.load()
+        if st_save.get("last_heartbeat_date") == today:
+            log.info("Heartbeat already sent today (%s); skipping duplicate.", today)
+            return 0
         msg = format_heartbeat(snapshots, missing, threshold,
                                st.get("last_modified_time"), now_ict)
         try:
@@ -243,6 +254,8 @@ def run() -> int:
         except Exception as e:
             log.error("Failed to send heartbeat: %s", e)
             return 1
+        st_save["last_heartbeat_date"] = today
+        state.save(st_save)
         return 0
 
     st["last_triggered"] = updated
