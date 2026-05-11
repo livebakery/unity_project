@@ -8,6 +8,16 @@ watchlist:
 # Fair Price [Premium], 3Y CAGR [Premium], Fair Price [Core].
 ratio_threshold: 10.0
 
+# Multi-tier early-warning thresholds. Each entry is "% below ratio_threshold":
+#   15 → ratio ≥ 10 * (1 - 0.15) = 8.5  (🟡 watch — เริ่มน่าสน)
+#   10 → ratio ≥ 10 * (1 - 0.10) = 9.0  (🟠 warm — ใกล้แล้ว)
+# The full ratio_threshold itself (= 10.0) is always the top tier (🔴 buy).
+# Each tier dedups independently — a ticker fires one message per upward
+# tier crossing; the next tier fires only when ratio climbs higher.
+ratio_tier_warnings_pct:
+  - 15
+  - 10
+
 # --- Market hours (ICT, UTC+7). Outside these times main.py exits early. ---
 market_hours_ict:
   morning:

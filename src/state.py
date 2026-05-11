@@ -16,13 +16,21 @@ def load(path: Path = DEFAULT_PATH) -> dict[str, Any]:
         return {
             "last_modified_time": None,
             "last_valuations": {},
-            "last_triggered": {},
+            "last_tier": {},
         }
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
     data.setdefault("last_modified_time", None)
     data.setdefault("last_valuations", {})
-    data.setdefault("last_triggered", {})
+    # Migrate legacy last_triggered (bool per ticker) → last_tier (int per ticker).
+    # Old True meant ratio >= ratio_threshold (= top tier); False meant below.
+    if "last_tier" not in data:
+        legacy = data.get("last_triggered") or {}
+        migrated: dict[str, int] = {}
+        for t, v in legacy.items():
+            migrated[t] = 3 if bool(v) else 0
+        data["last_tier"] = migrated
+        data.pop("last_triggered", None)
     return data
 
 

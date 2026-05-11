@@ -68,10 +68,28 @@ def format_update_message(changes: dict[str, dict], removed: list[str]) -> str:
     return "\n".join(lines).strip()
 
 
-def format_alert_message(snap: alert_logic.Snapshot, threshold: float) -> str:
+TIER_META = {
+    1: {"emoji": "🟡", "label": "watch", "th": "เริ่มน่าสน (15% จาก buy)"},
+    2: {"emoji": "🟠", "label": "warm",  "th": "ใกล้แล้ว (10% จาก buy)"},
+    3: {"emoji": "🔴", "label": "buy",   "th": "สัญญาณซื้อ (เซียนรับรอง)"},
+}
+
+
+def format_alert_message(
+    snap: alert_logic.Snapshot, tiers: list[float], threshold: float
+) -> str:
+    meta = TIER_META.get(snap.tier, TIER_META[3])
+    tier_threshold = tiers[snap.tier - 1] if 1 <= snap.tier <= len(tiers) else threshold
+    if snap.tier >= 3:
+        headline = f"{meta['emoji']} *สัญญาณซื้อ — `{snap.ticker}`*"
+    else:
+        headline = (
+            f"{meta['emoji']} *{snap.ticker}* — {meta['th']}\n"
+            f"_(tier {snap.tier}/3, ยังไม่ใช่สัญญาณซื้อเต็ม)_"
+        )
     return (
-        f"🚨 *สัญญาณซื้อ — `{snap.ticker}`*\n"
-        f"ratio = `{snap.ratio:.2f}` (≥ {threshold:.0f})\n"
+        f"{headline}\n"
+        f"ratio = `{snap.ratio:.2f}` (≥ {tier_threshold:.2f})\n"
         f"\n"
         f"ราคาตลาด: {snap.live_price:,.2f}\n"
         f"Fair Price [Premium] (1Y): {snap.fair_price_premium:,.2f}\n"
@@ -94,7 +112,7 @@ def format_heartbeat(
     lines = [f"📍 *EOD {now_ict.strftime('%d %b %Y')}* — ระบบทำงานปกติ", ""]
     if snapshots:
         for snap in snapshots:
-            tag = " 🚨" if snap.ratio >= threshold else ""
+            tag = f" {TIER_META[snap.tier]['emoji']}" if snap.tier > 0 else ""
             lines.append(
                 f"`{snap.ticker}` @ {snap.live_price:,.2f} — "
                 f"ratio={snap.ratio:.2f}{tag}"
@@ -142,6 +160,9 @@ def run() -> int:
         log.error("watchlist is empty in config.yaml")
         return 2
     threshold = float(config.get("ratio_threshold", 10.0))
+    warnings_pct = config.get("ratio_tier_warnings_pct") or []
+    tiers = alert_logic.tier_thresholds(threshold, warnings_pct)
+    log.info("Tier thresholds: %s (ratio_threshold=%.2f)", tiers, threshold)
 
     st = state.load()
 
@@ -197,11 +218,12 @@ def run() -> int:
                 telegram_notify.send(format_update_message(changes, removed))
             except Exception as e:
                 log.error("Failed to send update message: %s", e)
-            # reset triggered state for changed tickers so a fresh signal fires
+            # Reset tier state for changed tickers so the new valuation can
+            # fire fresh tier-crossing alerts.
             for t in changes:
-                st["last_triggered"][t] = False
+                st["last_tier"][t] = 0
             for t in removed:
-                st["last_triggered"].pop(t, None)
+                st["last_tier"].pop(t, None)
 
     st["last_valuations"] = {
         t: {
@@ -223,15 +245,17 @@ def run() -> int:
     snapshots, new_alerts, updated = alert_logic.evaluate(
         stocks=pr.stocks,
         live_prices=prices,
-        last_triggered={t: bool(v) for t, v in st.get("last_triggered", {}).items()},
-        ratio_threshold=threshold,
+        last_tier={t: int(v) for t, v in st.get("last_tier", {}).items()},
+        tiers=tiers,
     )
 
     for snap in snapshots:
-        log.info("%s: live=%.2f fair3Y=%.2f core=%.2f UD3Y=%+.2f%% UDcore=%+.2f%% ratio=%.2f%s",
-                 snap.ticker, snap.live_price, snap.fair_3y_premium, snap.fair_price_core,
-                 snap.updown_3y_pct, snap.updown_core_pct, snap.ratio,
-                 " [TRIGGERED]" if snap.triggered else "")
+        log.info(
+            "%s: live=%.2f fair3Y=%.2f core=%.2f UD3Y=%+.2f%% UDcore=%+.2f%% "
+            "ratio=%.2f tier=%d",
+            snap.ticker, snap.live_price, snap.fair_3y_premium, snap.fair_price_core,
+            snap.updown_3y_pct, snap.updown_core_pct, snap.ratio, snap.tier,
+        )
 
     # Heartbeat mode: send EOD summary, dedup so multiple cron triggers per day
     # only fire once. GitHub Actions cron is best-effort and drops runs, so
@@ -258,13 +282,13 @@ def run() -> int:
         state.save(st_save)
         return 0
 
-    st["last_triggered"] = updated
+    st["last_tier"] = updated
 
-    # 6. Send alerts
+    # 6. Send alerts (one per ticker per tier-up transition)
     for snap in new_alerts:
         try:
-            telegram_notify.send(format_alert_message(snap, threshold))
-            log.info("Alert sent: %s", snap.ticker)
+            telegram_notify.send(format_alert_message(snap, tiers, threshold))
+            log.info("Alert sent: %s (tier %d)", snap.ticker, snap.tier)
         except Exception as e:
             log.error("Failed to send alert for %s: %s", snap.ticker, e)
 

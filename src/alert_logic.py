@@ -6,10 +6,14 @@ For each watchlist ticker:
     updown_core     = (fair_price_core - live_price) / live_price * 100
     ratio           = abs(updown_3y) / abs(updown_core)
 
-Alert when ratio >= ratio_threshold (default 10).
+Multi-tier alerts (all measured against the main ratio_threshold T):
+    tier 1: ratio >= T * (1 - 0.15)   -> 🟡 watch  (15% below buy)
+    tier 2: ratio >= T * (1 - 0.10)   -> 🟠 warm   (10% below buy)
+    tier 3: ratio >= T                -> 🔴 buy    (mentor-confirmed signal)
 
-Dedupe: only fire when "in_signal" transitions False -> True. When ratio
-drops back below threshold, reset state so the next cross fires again.
+Dedupe: alert fires only when the ticker's tier INCREASES from one run to
+the next. When the ratio drops back down, the stored tier follows it
+downward so the next upward crossing fires again.
 """
 from __future__ import annotations
 
@@ -31,7 +35,7 @@ class Snapshot:
     updown_3y_pct: float
     updown_core_pct: float
     ratio: float                    # math.inf if denominator is ~0
-    triggered: bool                 # ratio >= threshold
+    tier: int                       # 0/1/2/3 — filled by evaluate()
 
 
 def compute_snapshot(stock: Stock, live_price: float) -> Snapshot:
@@ -53,38 +57,69 @@ def compute_snapshot(stock: Stock, live_price: float) -> Snapshot:
         updown_3y_pct=updown_3y,
         updown_core_pct=updown_core,
         ratio=ratio,
-        triggered=False,  # filled in by evaluate()
+        tier=0,
     )
+
+
+def tier_thresholds(ratio_threshold: float, warnings_pct: list[float]) -> list[float]:
+    """Return tier thresholds in ASCENDING order: [warn1, warn2, ..., main].
+
+    warnings_pct is a list of "% below main" values (e.g. [15, 10] → main*0.85,
+    main*0.90). Duplicates and out-of-range entries are silently filtered.
+    """
+    tiers: list[float] = []
+    for pct in warnings_pct:
+        if pct is None:
+            continue
+        try:
+            f = float(pct)
+        except (TypeError, ValueError):
+            continue
+        if f <= 0 or f >= 100:
+            continue
+        tiers.append(ratio_threshold * (1.0 - f / 100.0))
+    tiers.append(ratio_threshold)
+    tiers = sorted(set(round(t, 6) for t in tiers))
+    return tiers
+
+
+def compute_tier(ratio: float, tiers: list[float]) -> int:
+    """Return highest tier index (1-based) whose threshold is met, or 0."""
+    tier = 0
+    for i, t in enumerate(tiers, start=1):
+        if ratio >= t:
+            tier = i
+    return tier
 
 
 def evaluate(
     stocks: list[Stock],
     live_prices: dict[str, Optional[float]],
-    last_triggered: dict[str, bool],
-    ratio_threshold: float,
-) -> tuple[list[Snapshot], list[Snapshot], dict[str, bool]]:
+    last_tier: dict[str, int],
+    tiers: list[float],
+) -> tuple[list[Snapshot], list[Snapshot], dict[str, int]]:
     """
     Returns:
-        snapshots:        all stocks with computed values (for diagnostics)
-        new_alerts:       snapshots whose state flipped not-triggered -> triggered
-        updated_state:    new last_triggered dict to persist
+        snapshots:        all stocks with computed values + current tier
+        new_alerts:       snapshots whose tier increased since last run
+        updated_state:    new last_tier dict to persist
     """
     snapshots: list[Snapshot] = []
     new_alerts: list[Snapshot] = []
-    updated = dict(last_triggered)
+    updated: dict[str, int] = {t: int(v) for t, v in last_tier.items()}
 
     for s in stocks:
         price = live_prices.get(s.ticker)
         if price is None or price <= 0:
             continue
         snap = compute_snapshot(s, price)
-        snap.triggered = snap.ratio >= ratio_threshold
+        snap.tier = compute_tier(snap.ratio, tiers)
         snapshots.append(snap)
 
-        was_triggered = bool(updated.get(s.ticker, False))
-        if snap.triggered and not was_triggered:
+        was_tier = int(updated.get(s.ticker, 0))
+        if snap.tier > was_tier:
             new_alerts.append(snap)
-        updated[s.ticker] = snap.triggered
+        updated[s.ticker] = snap.tier
 
     return snapshots, new_alerts, updated
 
