@@ -1,7 +1,7 @@
 {
   "last_modified_time": "2026-05-09T05:30:01.181Z",
-  "last_triggered": {
-    "DOHOME": false
+  "last_tier": {
+    "DOHOME": 2
   },
   "last_valuations": {
     "DOHOME": {
