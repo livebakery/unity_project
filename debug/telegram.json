@@ -1,0 +1,66 @@
+{
+  "timestamp_utc": "2026-05-13T11:28:03Z",
+  "marker": "debug-25796206351-1",
+  "secrets_meta": {
+    "token_tail6": "BCf3wk",
+    "token_length": 46,
+    "token_has_colon": true,
+    "chat_id_value": "8203088359",
+    "chat_id_length": 10
+  },
+  "getMe": {
+    "ok": true,
+    "result": {
+      "id": 8340707919,
+      "is_bot": true,
+      "first_name": "P Pas stock alert",
+      "username": "P_pas_stock_alert_bot",
+      "can_join_groups": true,
+      "can_read_all_group_messages": false,
+      "supports_inline_queries": false,
+      "supports_guest_queries": false,
+      "can_connect_to_business": false,
+      "has_main_web_app": false,
+      "has_topics_enabled": false,
+      "allows_users_to_create_topics": false,
+      "can_manage_bots": false
+    }
+  },
+  "getChat": {
+    "ok": true,
+    "result": {
+      "id": 8203088359,
+      "first_name": "B",
+      "type": "private",
+      "can_send_gift": true,
+      "accepted_gift_types": {
+        "unlimited_gifts": true,
+        "limited_gifts": true,
+        "unique_gifts": true,
+        "premium_subscription": true,
+        "gifts_from_channels": true
+      },
+      "max_reaction_count": 11,
+      "accent_color_id": 4
+    }
+  },
+  "sendMessage": {
+    "ok": true,
+    "result": {
+      "message_id": 13,
+      "from": {
+        "id": 8340707919,
+        "is_bot": true,
+        "first_name": "P Pas stock alert",
+        "username": "P_pas_stock_alert_bot"
+      },
+      "chat": {
+        "id": 8203088359,
+        "first_name": "B",
+        "type": "private"
+      },
+      "date": 1778671683,
+      "text": "🔧 debug-25796206351-1"
+    }
+  }
+}
