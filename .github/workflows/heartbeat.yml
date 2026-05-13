@@ -10,6 +10,11 @@ on:
     - cron: '5 10 * * 1-5'   # 17:05 ICT backup
     - cron: '20 10 * * 1-5'  # 17:20 ICT backup
   workflow_dispatch:
+  # Push-trigger escape hatch: bumping this file fires a heartbeat run
+  # outside the cron schedule (cron occasionally drops a whole day).
+  push:
+    paths:
+      - 'debug/heartbeat-fire.txt'
 
 permissions:
   contents: write  # commits state.json (last_heartbeat_date) to persist dedup
