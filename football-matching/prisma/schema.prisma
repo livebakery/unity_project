@@ -1,0 +1,66 @@
+// Data model — see docs/spec.md §6
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum SkillLevel {
+  beginner // 🟢 มือใหม่หัดเตะ
+  casual // 🔵 เตะออกกำลัง
+  competitive // 🔴 จริงจัง
+  any // ⚪ ไม่จำกัด
+}
+
+enum MatchStatus {
+  open
+  full
+  expired
+  cancelled
+}
+
+model Venue {
+  id           String   @id @default(cuid())
+  name         String
+  address      String?
+  lat          Float?
+  lng          Float?
+  gmapsPlaceId String?  @unique
+  gmapsUrl     String?
+  district     String? // กทม. 50 เขต (ภาษาไทย)
+  province     String   @default("กรุงเทพมหานคร")
+  createdAt    DateTime @default(now())
+
+  matches Match[]
+
+  @@index([district])
+}
+
+model Match {
+  id             String      @id @default(cuid())
+  hostName       String
+  venue          Venue       @relation(fields: [venueId], references: [id])
+  venueId        String
+  kickoffAt      DateTime
+  durationMin    Int         @default(120)
+  matchType      Int         @default(7) // 5 | 7 | 11
+  playersNeeded  Int         @default(1)
+  positionsNeeded String[]   @default([])
+  pricePerHead   Float?
+  skillLevel     SkillLevel  @default(any)
+  contactLine    String?
+  contactTel     String?
+  rawText        String // ข้อความต้นฉบับที่วางมา
+  sourceUrl      String? // ลิงก์กลับโพสต์ต้นฉบับ (โหมดแอดมิน seed)
+  status         MatchStatus @default(open)
+  expiresAt      DateTime
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([kickoffAt])
+  @@index([status])
+}
