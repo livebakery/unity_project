@@ -36,17 +36,29 @@ def open_spreadsheet(sheet_id: str) -> gspread.Spreadsheet:
     return _client().open_by_key(sheet_id)
 
 
-_DDMMYYYY_RE = re.compile(r"^(\d{2})(\d{2})(\d{4})$")
+_DATED_TAB_RE = re.compile(r"^(\d{2})[/\-]?(\d{2})[/\-]?(\d{4})$")
 
 
 def _parse_dated_tab(name: str) -> Optional[datetime]:
-    m = _DDMMYYYY_RE.match(name.strip())
+    """Match `DDMMYYYY`, `DD/MM/YYYY`, or `DD-MM-YYYY`."""
+    m = _DATED_TAB_RE.match(name.strip())
     if not m:
         return None
     try:
         return datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
     except ValueError:
         return None
+
+
+def find_tab_for_date(
+    ss, target_date: datetime
+) -> Optional[str]:
+    """Return the tab title matching target_date (any accepted format), or None."""
+    for ws in ss.worksheets():
+        d = _parse_dated_tab(ws.title)
+        if d is not None and d.date() == target_date.date():
+            return ws.title
+    return None
 
 
 def pick_source_tab(

@@ -22,8 +22,10 @@ columns:
 # Ticker suffix for yfinance lookup (SET stocks)
 ticker_suffix: ".BK"
 
-# Tab name format for new snapshot (strftime, ICT date)
-tab_name_format: "%d%m%Y"      # e.g. 17072026
+# Tab name format for new snapshot (strftime, ICT date).
+# Matches the existing DD/MM/YYYY convention used in the sheet.
+# (Parser accepts both DDMMYYYY and DD/MM/YYYY when picking source.)
+tab_name_format: "%d/%m/%Y"    # e.g. 17/07/2026
 
 # If the latest tab's name doesn't match tab_name_format, fall back to
 # "last worksheet in the workbook" as the source tab.

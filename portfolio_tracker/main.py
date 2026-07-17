@@ -66,10 +66,30 @@ def run() -> int:
 
     log.info("Opened spreadsheet: %s", ss.title)
 
-    # 2. Skip if today's tab already exists (idempotent re-runs)
-    existing = {ws.title for ws in ss.worksheets()}
-    if today_tab in existing:
-        log.info("Tab %r already exists; skipping.", today_tab)
+    # 1b. Optional: rename any date-parseable tabs to the canonical format
+    #     (e.g. legacy '17072026' → '17/07/2026'). Triggered by env var.
+    if os.environ.get("RENAME_LEGACY") == "1":
+        renamed = 0
+        for ws in ss.worksheets():
+            d = sheets_ops._parse_dated_tab(ws.title)
+            if d is None:
+                continue
+            canonical = d.strftime(tab_format)
+            if ws.title != canonical:
+                log.info("Renaming %r → %r", ws.title, canonical)
+                ws.update_title(canonical)
+                renamed += 1
+        log.info("Legacy rename complete: %d tabs renamed.", renamed)
+        _try_notify(
+            f"🔧 Portfolio: normalized {renamed} tab name(s) to `{tab_format}` format"
+        )
+        return 0
+
+    # 2. Skip if today's tab already exists (idempotent re-runs). Match by
+    #    parsed date so slashed and un-slashed formats are treated as one.
+    existing_match = sheets_ops.find_tab_for_date(ss, now_ict)
+    if existing_match is not None:
+        log.info("Tab for today already exists as %r; skipping.", existing_match)
         return 0
 
     # 3. Pick source tab

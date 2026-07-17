@@ -15,6 +15,10 @@ on:
         description: 'Run even on weekends'
         type: boolean
         default: false
+      rename_legacy:
+        description: 'One-shot: normalize all date tab names to DD/MM/YYYY'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -47,6 +51,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           FORCE_RUN: ${{ inputs.force_run && '1' || '' }}
+          RENAME_LEGACY: ${{ inputs.rename_legacy && '1' || '' }}
         run: python main.py
 
       - name: Notify Telegram on failure
