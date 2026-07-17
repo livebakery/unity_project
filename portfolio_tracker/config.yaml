@@ -1,0 +1,33 @@
+# Portfolio Snapshotter — copy latest tab, apply live prices, name it after
+# today's date (DDMMYYYY, ICT).
+
+# Google Sheet ID (portfolio workbook)
+sheet_id: "1dhcdI7JFCkVHTbbCpJWZYIaP7GOQ_rg5TMaNDIZqZco"
+
+# Column layout of each tab (1-based col indices matching sheet).
+# Header row is auto-detected by matching required Thai labels.
+columns:
+  portfolio: 1        # พอร์ท
+  type: 2             # ประเภท
+  ticker: 3           # ชื่อหุ้น
+  shares: 4           # จำนวนหุ้น
+  avg_cost: 5         # ราคาทุนเฉลี่ย
+  total_cost: 6       # รวมตามทุน
+  market_price: 7     # ราคาตลาด          ← we update this
+  total_market: 8     # รวมตามราคาตลาด    ← we recompute
+  upl_pct: 9          # %U.PL             ← we recompute
+  proportion: 10      # %Proportion       ← we recompute
+  expected_div: 11    # Expected Dividend (untouched)
+
+# Ticker suffix for yfinance lookup (SET stocks)
+ticker_suffix: ".BK"
+
+# Tab name format for new snapshot (strftime, ICT date)
+tab_name_format: "%d%m%Y"      # e.g. 17072026
+
+# If the latest tab's name doesn't match tab_name_format, fall back to
+# "last worksheet in the workbook" as the source tab.
+source_tab_strategy: "latest_dated"    # options: latest_dated | last
+
+# Skip run on weekends
+weekend_skip: true

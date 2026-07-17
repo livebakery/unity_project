@@ -1,0 +1,63 @@
+name: Weekly Portfolio Snapshot
+
+# Runs every Friday 16:50 ICT (09:50 UTC) after SET market close. GitHub
+# Actions cron is best-effort — schedule a couple of backup times too.
+# Idempotent: main.py exits cleanly if today's tab already exists.
+
+on:
+  schedule:
+    - cron: '50 9 * * 5'    # 16:50 ICT Fri
+    - cron: '5 10 * * 5'    # 17:05 ICT Fri (backup)
+    - cron: '20 10 * * 5'   # 17:20 ICT Fri (backup)
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Run even on weekends'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: portfolio-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run snapshot
+        working-directory: portfolio_tracker
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          SHEET_ID: ${{ secrets.PORTFOLIO_SHEET_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FORCE_RUN: ${{ inputs.force_run && '1' || '' }}
+        run: python main.py
+
+      - name: Notify Telegram on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "parse_mode=Markdown" \
+            --data-urlencode "disable_web_page_preview=true" \
+            --data-urlencode "text=⚠️ *Portfolio snapshot ล้มเหลว* — [ดู log](${RUN_URL})"
