@@ -22,6 +22,7 @@ def load(path: Path = DEFAULT_PATH) -> dict[str, Any]:
         data = json.load(f)
     data.setdefault("last_modified_time", None)
     data.setdefault("last_valuations", {})
+    data.setdefault("last_sell_alerted", {})
     # Migrate legacy last_triggered (bool per ticker) → last_tier (int per ticker).
     # Old True meant ratio >= ratio_threshold (= top tier); False meant below.
     if "last_tier" not in data:

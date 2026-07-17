@@ -102,6 +102,49 @@ def format_alert_message(
     )
 
 
+def format_sell_alert_message(
+    snap: alert_logic.Snapshot, sell_target: float
+) -> str:
+    pct_above = (snap.live_price - sell_target) / sell_target * 100.0
+    return (
+        f"💰 *ราคาแตะเป้าขาย — `{snap.ticker}`*\n"
+        f"ราคาตลาด: {snap.live_price:,.2f}  (เป้า {sell_target:,.2f}, "
+        f"เหนือเป้า {pct_above:+.2f}%)\n"
+        f"\n"
+        f"Fair Price [Premium] (1Y): {snap.fair_price_premium:,.2f}\n"
+        f"Fair Price 3Y: {snap.fair_3y_premium:,.2f}\n"
+        f"Fair Price [Core]: {snap.fair_price_core:,.2f}"
+    )
+
+
+def _normalize_watchlist(raw) -> tuple[list[str], dict[str, dict]]:
+    """Accept either legacy list-of-strings or new dict-of-configs.
+
+    Returns (ticker_list, per_ticker_config) with tickers upper-cased.
+    """
+    tickers: list[str] = []
+    configs: dict[str, dict] = {}
+    if isinstance(raw, dict):
+        for t, cfg in raw.items():
+            key = str(t).upper()
+            tickers.append(key)
+            configs[key] = dict(cfg) if isinstance(cfg, dict) else {}
+    elif isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                # entries like {ticker: DOHOME, sell_target: 4.20}
+                key = str(item.get("ticker") or "").upper()
+                if not key:
+                    continue
+                tickers.append(key)
+                configs[key] = {k: v for k, v in item.items() if k != "ticker"}
+            else:
+                key = str(item).upper()
+                tickers.append(key)
+                configs[key] = {}
+    return tickers, configs
+
+
 def format_heartbeat(
     snapshots: list[alert_logic.Snapshot],
     missing_prices: list[str],
@@ -155,7 +198,8 @@ def run() -> int:
                  now_ict.strftime("%Y-%m-%d %H:%M %a"))
         return 0
 
-    watchlist: list[str] = config.get("watchlist") or []
+    watchlist_raw = config.get("watchlist") or []
+    watchlist, ticker_configs = _normalize_watchlist(watchlist_raw)
     if not watchlist:
         log.error("watchlist is empty in config.yaml")
         return 2
@@ -163,6 +207,7 @@ def run() -> int:
     warnings_pct = config.get("ratio_tier_warnings_pct") or []
     tiers = alert_logic.tier_thresholds(threshold, warnings_pct)
     log.info("Tier thresholds: %s (ratio_threshold=%.2f)", tiers, threshold)
+    log.info("Watchlist: %s", ticker_configs)
 
     st = state.load()
 
@@ -242,19 +287,26 @@ def run() -> int:
         log.warning("No price for: %s", ", ".join(missing))
 
     # 5. Evaluate
-    snapshots, new_alerts, updated = alert_logic.evaluate(
+    snapshots, new_buy_alerts, new_sell_alerts, updated_tier, updated_sell = alert_logic.evaluate(
         stocks=pr.stocks,
         live_prices=prices,
         last_tier={t: int(v) for t, v in st.get("last_tier", {}).items()},
         tiers=tiers,
+        ticker_configs=ticker_configs,
+        last_sell_alerted={t: bool(v) for t, v in st.get("last_sell_alerted", {}).items()},
     )
 
     for snap in snapshots:
+        cfg = ticker_configs.get(snap.ticker, {})
+        sell_target = cfg.get("sell_target")
+        sell_str = f" sell_target={sell_target}" if sell_target is not None else ""
+        buy_enabled = bool(cfg.get("buy_ratio_enabled", True))
         log.info(
             "%s: live=%.2f fair3Y=%.2f core=%.2f UD3Y=%+.2f%% UDcore=%+.2f%% "
-            "ratio=%.2f tier=%d",
+            "ratio=%.2f tier=%d buy=%s%s",
             snap.ticker, snap.live_price, snap.fair_3y_premium, snap.fair_price_core,
             snap.updown_3y_pct, snap.updown_core_pct, snap.ratio, snap.tier,
+            buy_enabled, sell_str,
         )
 
     # Heartbeat mode: send EOD summary, dedup so multiple cron triggers per day
@@ -282,18 +334,31 @@ def run() -> int:
         state.save(st_save)
         return 0
 
-    st["last_tier"] = updated
+    st["last_tier"] = updated_tier
+    st["last_sell_alerted"] = updated_sell
 
     # 6. Send alerts (one per ticker per tier-up transition)
-    for snap in new_alerts:
+    for snap in new_buy_alerts:
         try:
             telegram_notify.send(format_alert_message(snap, tiers, threshold))
-            log.info("Alert sent: %s (tier %d)", snap.ticker, snap.tier)
+            log.info("Buy alert sent: %s (tier %d)", snap.ticker, snap.tier)
         except Exception as e:
-            log.error("Failed to send alert for %s: %s", snap.ticker, e)
+            log.error("Failed to send buy alert for %s: %s", snap.ticker, e)
+
+    # 7. Send sell alerts (price crossed sell_target upward)
+    for snap in new_sell_alerts:
+        cfg = ticker_configs.get(snap.ticker, {})
+        try:
+            target = float(cfg["sell_target"])
+            telegram_notify.send(format_sell_alert_message(snap, target))
+            log.info("Sell alert sent: %s @ %.2f (target %.2f)",
+                     snap.ticker, snap.live_price, target)
+        except Exception as e:
+            log.error("Failed to send sell alert for %s: %s", snap.ticker, e)
 
     state.save(st)
-    log.info("Done. %d new alerts.", len(new_alerts))
+    log.info("Done. %d buy + %d sell alerts.",
+             len(new_buy_alerts), len(new_sell_alerts))
     return 0
 
 

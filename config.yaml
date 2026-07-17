@@ -1,6 +1,17 @@
-# --- Stocks to monitor (start with one, add tickers freely) ---
+# --- Stocks to monitor (per-ticker config; keys are tickers) ---
+# Each ticker has 2 optional alert modes:
+#   buy_ratio_enabled: fire tier alerts (🟡/🟠/🔴) when |UD3Y| / |UDcore| >= threshold
+#   sell_target:       fire 💰 alert when live price >= sell_target (dedup: only
+#                      once until price drops back below, then re-arms)
+# Set either or both. Omit sell_target to disable sell alert; set
+# buy_ratio_enabled: false to disable buy alerts entirely for that ticker.
+#
+# Legacy format (list of ticker strings) is still accepted — treats all as
+# buy_ratio_enabled=true with no sell target.
 watchlist:
-  - DOHOME
+  DOHOME:
+    buy_ratio_enabled: false
+    sell_target: 4.20
 
 # --- Buy-signal threshold ---
 # ratio = | Up/Down 3Y [Premium] | / | Up/Down [Core] |

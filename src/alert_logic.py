@@ -97,31 +97,59 @@ def evaluate(
     live_prices: dict[str, Optional[float]],
     last_tier: dict[str, int],
     tiers: list[float],
-) -> tuple[list[Snapshot], list[Snapshot], dict[str, int]]:
+    ticker_configs: Optional[dict[str, dict]] = None,
+    last_sell_alerted: Optional[dict[str, bool]] = None,
+) -> tuple[list[Snapshot], list[Snapshot], list[Snapshot], dict[str, int], dict[str, bool]]:
     """
     Returns:
-        snapshots:        all stocks with computed values + current tier
-        new_alerts:       snapshots whose tier increased since last run
-        updated_state:    new last_tier dict to persist
+        snapshots:            all stocks with computed values + current tier
+        new_buy_alerts:       snapshots whose buy tier increased since last run
+                              (only for tickers with buy_ratio_enabled=true)
+        new_sell_alerts:      snapshots that crossed sell_target upward this run
+        updated_tier:         new last_tier dict to persist
+        updated_sell:         new last_sell_alerted dict to persist
     """
+    ticker_configs = ticker_configs or {}
     snapshots: list[Snapshot] = []
-    new_alerts: list[Snapshot] = []
-    updated: dict[str, int] = {t: int(v) for t, v in last_tier.items()}
+    new_buy_alerts: list[Snapshot] = []
+    new_sell_alerts: list[Snapshot] = []
+    updated_tier: dict[str, int] = {t: int(v) for t, v in last_tier.items()}
+    updated_sell: dict[str, bool] = dict(last_sell_alerted or {})
 
     for s in stocks:
         price = live_prices.get(s.ticker)
         if price is None or price <= 0:
             continue
         snap = compute_snapshot(s, price)
-        snap.tier = compute_tier(snap.ratio, tiers)
+        cfg = ticker_configs.get(s.ticker, {})
+        buy_enabled = bool(cfg.get("buy_ratio_enabled", True))
+        sell_target = cfg.get("sell_target")
+
+        if buy_enabled:
+            snap.tier = compute_tier(snap.ratio, tiers)
+            was_tier = int(updated_tier.get(s.ticker, 0))
+            if snap.tier > was_tier:
+                new_buy_alerts.append(snap)
+            updated_tier[s.ticker] = snap.tier
+        else:
+            snap.tier = 0
+            updated_tier[s.ticker] = 0
+
+        if sell_target is not None:
+            try:
+                target = float(sell_target)
+            except (TypeError, ValueError):
+                target = None
+            if target is not None:
+                at_target = snap.live_price >= target
+                was_at_target = bool(updated_sell.get(s.ticker, False))
+                if at_target and not was_at_target:
+                    new_sell_alerts.append(snap)
+                updated_sell[s.ticker] = at_target
+
         snapshots.append(snap)
 
-        was_tier = int(updated.get(s.ticker, 0))
-        if snap.tier > was_tier:
-            new_alerts.append(snap)
-        updated[s.ticker] = snap.tier
-
-    return snapshots, new_alerts, updated
+    return snapshots, new_buy_alerts, new_sell_alerts, updated_tier, updated_sell
 
 
 def diff_valuations(
