@@ -1,6 +1,9 @@
 {
   "last_heartbeat_date": "2026-07-17",
   "last_modified_time": "2026-06-29T09:24:54.991Z",
+  "last_sell_alerted": {
+    "DOHOME": false
+  },
   "last_tier": {
     "DOHOME": 0
   },
