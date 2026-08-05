@@ -87,13 +87,26 @@ def run() -> int:
 
     # 2. Skip if today's tab already exists (idempotent re-runs). Match by
     #    parsed date so slashed and un-slashed formats are treated as one.
+    #    RECOMPUTE_ONLY overrides the skip: reuse the existing tab instead of
+    #    duplicating a new one, and resend a corrected summary. Added
+    #    2026-08-05 after portfolio_totals() double-counted a second
+    #    (breakdown-only) table and sent a wrong total to Telegram.
+    recompute_only = os.environ.get("RECOMPUTE_ONLY") == "1"
     existing_match = sheets_ops.find_tab_for_date(ss, now_ict)
+    reuse_existing_tab = False
     if existing_match is not None:
-        log.info("Tab for today already exists as %r; skipping.", existing_match)
-        return 0
+        if not recompute_only:
+            log.info("Tab for today already exists as %r; skipping.", existing_match)
+            return 0
+        log.info("RECOMPUTE_ONLY set — reusing existing tab %r.", existing_match)
+        reuse_existing_tab = True
+        today_tab = existing_match
 
-    # 3. Pick source tab
-    source_ws = sheets_ops.pick_source_tab(ss, strategy=strategy)
+    # 3. Pick source tab (excluding today's own tab, so a recompute run
+    #    doesn't pick itself as the comparison baseline).
+    source_ws = sheets_ops.pick_source_tab(
+        ss, strategy=strategy, exclude_title=today_tab if reuse_existing_tab else None
+    )
     log.info("Source tab: %r", source_ws.title)
 
     # 4. Extract tickers from source
@@ -113,13 +126,17 @@ def run() -> int:
         _try_notify("⚠️ Portfolio: ดึงราคาไม่ได้เลย (yfinance ล่มหรือ ticker ผิด?)")
         return 1
 
-    # 6. Duplicate source → today's tab
-    try:
-        new_ws = sheets_ops.duplicate_tab(ss, source_ws, today_tab)
-    except Exception as e:
-        log.error("Failed to duplicate tab: %s", e)
-        _try_notify(f"⚠️ Portfolio: duplicate tab ไม่ได้\n`{e}`")
-        return 1
+    # 6. Duplicate source → today's tab (or reuse it, when recomputing)
+    if reuse_existing_tab:
+        new_ws = next(ws for ws in ss.worksheets() if ws.title == today_tab)
+        log.info("Reusing existing tab %r (no duplicate).", today_tab)
+    else:
+        try:
+            new_ws = sheets_ops.duplicate_tab(ss, source_ws, today_tab)
+        except Exception as e:
+            log.error("Failed to duplicate tab: %s", e)
+            _try_notify(f"⚠️ Portfolio: duplicate tab ไม่ได้\n`{e}`")
+            return 1
 
     # 7. Apply new prices
     prices_for_apply = {t: p for t, p in prices.items() if p is not None}
@@ -149,6 +166,12 @@ def run() -> int:
         missing_prices=missing_prices,
         rows_updated=rows_updated,
     )
+    if reuse_existing_tab:
+        msg = (
+            "🔧 *แก้ไขยอดที่ส่งผิดก่อนหน้านี้* — บั๊กใน portfolio_totals() "
+            "นับตารางย่อย (breakdown เฉพาะกลุ่ม Growth) ซ้ำเข้าไปด้วย "
+            "ยอดที่ถูกต้องคือด้านล่างนี้\n\n" + msg
+        )
     _try_notify(msg)
 
     log.info("Done.")

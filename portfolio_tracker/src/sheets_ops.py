@@ -62,7 +62,9 @@ def find_tab_for_date(
 
 
 def pick_source_tab(
-    ss: gspread.Spreadsheet, strategy: str = "latest_dated"
+    ss: gspread.Spreadsheet,
+    strategy: str = "latest_dated",
+    exclude_title: Optional[str] = None,
 ) -> gspread.Worksheet:
     """Return the worksheet to use as the source template.
 
@@ -70,8 +72,14 @@ def pick_source_tab(
       "latest_dated" — worksheet with the newest DDMMYYYY-parsed name;
                        falls back to last worksheet if no dated names.
       "last"         — the last worksheet in the workbook.
+
+    exclude_title skips a worksheet by exact title match -- used when
+    recomputing against an already-existing "today" tab, so that tab
+    doesn't get picked as its own comparison baseline.
     """
     worksheets = ss.worksheets()
+    if exclude_title is not None:
+        worksheets = [ws for ws in worksheets if ws.title != exclude_title]
     if not worksheets:
         raise RuntimeError("Spreadsheet has no worksheets.")
 
@@ -211,13 +219,24 @@ def extract_tickers(ws: gspread.Worksheet, ticker_col: int) -> list[str]:
     return out
 
 
+# Some tabs carry a second table below the main position list -- e.g. a
+# "Growth stocks only" breakdown that feeds its own pie chart -- which
+# re-lists tickers already counted in the first table under a repeated
+# header row. portfolio_totals() must stop there or it double-counts those
+# positions (confirmed 2026-08-05: inflated a ~44.6M portfolio to ~71.7M).
+_TICKER_HEADER = "ชื่อหุ้น"
+
+
 def portfolio_totals(
     ws: gspread.Worksheet,
     columns: dict[str, int],
 ) -> tuple[float, float]:
     """Sum total_cost and total_market columns across position rows.
 
-    Non-position rows (blanks, summaries) contribute 0.
+    Non-position rows (blanks, summaries) contribute 0. Stops at the first
+    repeated header row so a second table lower in the same tab (a
+    breakdown view feeding a chart, not additional holdings) isn't
+    double-counted into the total.
     """
     values = ws.get_all_values()
     t_col = columns["ticker"] - 1
@@ -229,6 +248,8 @@ def portfolio_totals(
     for row in values:
         if len(row) <= max(t_col, tc_col, tm_col):
             continue
+        if (row[t_col] or "").strip() == _TICKER_HEADER:
+            break
         ticker = (row[t_col] or "").strip().upper()
         if not ticker or not re.fullmatch(r"[A-Z0-9\-\.&]{1,10}", ticker):
             continue
