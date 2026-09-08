@@ -1,6 +1,6 @@
 {
   "last_heartbeat_date": "2026-09-07",
-  "last_modified_time": "2026-08-24T15:00:57.925Z",
+  "last_modified_time": "2026-09-07T15:07:57.053Z",
   "last_sell_alerted": {
     "DOHOME": false
   },
@@ -9,9 +9,9 @@
   },
   "last_valuations": {
     "DOHOME": {
-      "cagr_3y_premium": 18.4413,
-      "fair_price_core": 2.74325,
-      "fair_price_premium": 3.42906
+      "cagr_3y_premium": 21.3065,
+      "fair_price_core": 2.73613,
+      "fair_price_premium": 3.42016
     }
   }
 }
